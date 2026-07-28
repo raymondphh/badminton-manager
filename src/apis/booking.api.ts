@@ -1,11 +1,5 @@
 import { apiClient } from "./axiosClient";
-import {
-  Booking,
-  BookingStatus,
-  CreateBookingPayload,
-  CreateFixedBookingPayload,
-  FixedDurationOption,
-} from "@/types/Booking";
+import { Booking, BookingStatus, FixedDurationOption } from "@/types/Booking";
 
 export const getAvailabilityApi = async (courtId: string, date: string) => {
   const { data } = await apiClient.get("/bookings/availability", {
@@ -14,8 +8,35 @@ export const getAvailabilityApi = async (courtId: string, date: string) => {
   return data.data.bookedSlots as string[];
 };
 
+export const getFixedDurationsApi = async () => {
+  const { data } = await apiClient.get("/bookings/fixed-durations");
+  return data.data.options as FixedDurationOption[];
+};
+
+export interface CreateBookingPayload {
+  courtId: string;
+  date: string;
+  slots: string[];
+  notes?: string;
+}
+
 export const createBookingApi = async (payload: CreateBookingPayload) => {
   const { data } = await apiClient.post("/bookings", payload);
+  return data.data.booking as Booking;
+};
+
+export interface CreateFixedBookingPayload {
+  courtId: string;
+  startDate: string;
+  slots: string[];
+  durationMonths: 1 | 3 | 6;
+  notes?: string;
+}
+
+export const createFixedBookingApi = async (
+  payload: CreateFixedBookingPayload,
+) => {
+  const { data } = await apiClient.post("/bookings/fixed", payload);
   return data.data.booking as Booking;
 };
 
@@ -47,17 +68,5 @@ export const updateBookingStatusApi = async (
     status,
     cancelReason,
   });
-  return data.data.booking as Booking;
-};
-
-export const getFixedDurationsApi = async () => {
-  const { data } = await apiClient.get("/bookings/fixed-durations");
-  return data.data.options as FixedDurationOption[];
-};
-
-export const createFixedBookingApi = async (
-  payload: CreateFixedBookingPayload,
-) => {
-  const { data } = await apiClient.post("/bookings/fixed", payload);
   return data.data.booking as Booking;
 };

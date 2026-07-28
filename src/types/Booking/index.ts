@@ -1,3 +1,6 @@
+export type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed";
+export type BookingType = "fixed" | "casual";
+
 export const TIME_SLOTS: string[] = [
   "00:00",
   "01:00",
@@ -25,17 +28,21 @@ export const TIME_SLOTS: string[] = [
   "23:00",
 ];
 
-export type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed";
-
-export type BookingType = "casual" | "fixed";
 export interface PriceBreakdownItem {
   time: string;
   price: number;
 }
+
+export interface FixedDurationOption {
+  months: 1 | 3 | 6;
+  label: string;
+}
+
 export interface Booking {
   _id: string;
   user: string;
   userName: string;
+  userEmail: string;
   court: string;
   courtName: string;
   categoryName: string;
@@ -48,29 +55,14 @@ export interface Booking {
   pricePerHour: number;
   totalPrice: number;
   priceBreakdown: PriceBreakdownItem[];
+  durationMonths?: 1 | 3 | 6;
+  startDate?: string;
+  endDate?: string;
+  occurrenceDates?: string[];
   status: BookingStatus;
   notes: string;
   cancelledBy?: string | null;
   cancelReason?: string;
   createdAt: string;
   updatedAt: string;
-}
-export interface CreateBookingPayload {
-  courtId: string;
-  date: string;
-  slots: string[];
-  bookingType: BookingType;
-  notes?: string;
-}
-export interface FixedDurationOption {
-  months: 1 | 2 | 3 | 6 | 12;
-  label: string;
-  discountPercent: number;
-}
-export interface CreateFixedBookingPayload {
-  courtId: string;
-  startDate: string;
-  slots: string[];
-  durationMonths: 1 | 2 | 3 | 6 | 12;
-  notes?: string;
 }

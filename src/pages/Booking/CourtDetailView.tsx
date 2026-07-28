@@ -11,7 +11,7 @@ import StarIcon from "@mui/icons-material/Star";
 import BoltIcon from "@mui/icons-material/Bolt";
 import { useAuthStore } from "@/store/authStore";
 import { useBookingFlowStore } from "@/store/bookingFlowStore";
-import { getAvailabilityApi } from "@/apis/booking.api";
+import { getAvailabilityApi, getFixedDurationsApi } from "@/apis/booking.api";
 import { getSocket } from "@/lib/socket";
 import { getCourtIcon } from "@/config/courtIcons";
 import {
@@ -19,7 +19,7 @@ import {
   areConsecutive,
   buildTimeRange,
 } from "@/utils/helpers";
-import { TIME_SLOTS, BookingType } from "@/types/Booking";
+import { TIME_SLOTS, BookingType, FixedDurationOption } from "@/types/Booking";
 import { PriceRule } from "@/types/Courts";
 import LoginPromptDialog from "@/components/auth/LoginPromptDialog";
 import { useNotification } from "@/hooks/useNotification";
@@ -45,6 +45,23 @@ const getPreviewPrice = (
   return type === "fixed" ? rule.pricePerHourFixed : rule.pricePerHourCasual;
 };
 
+// Chi de HIEN THI TRUOC so buoi cua goi co dinh - so lieu chinh xac cuoi cung
+// luon do BE tinh lai va tra ve trong booking sau khi dat thanh cong.
+const buildFixedOccurrencesPreview = (
+  startDate: string,
+  months: number,
+): string[] => {
+  const start = dayjs(startDate);
+  const end = start.add(months, "month");
+  const dates: string[] = [];
+  let current = start;
+  while (current.isBefore(end)) {
+    dates.push(current.format("YYYY-MM-DD"));
+    current = current.add(7, "day");
+  }
+  return dates;
+};
+
 const CourtDetailView: React.FC = () => {
   const { isAuthenticated } = useAuthStore();
   const {
@@ -52,10 +69,12 @@ const CourtDetailView: React.FC = () => {
     selectedDate,
     selectedSlots,
     bookingType,
+    selectedDuration,
     goToCatalog,
     setSelectedDate,
     setSelectedSlots,
     setBookingType,
+    setSelectedDuration,
     goToPayment,
   } = useBookingFlowStore();
   const { notification, notify, close: closeNotif } = useNotification();
@@ -63,10 +82,20 @@ const CourtDetailView: React.FC = () => {
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [fixedDurations, setFixedDurations] = useState<FixedDurationOption[]>(
+    [],
+  );
 
   const dateObj = dayjs(selectedDate);
   const todayStr = dayjs().format("YYYY-MM-DD");
   const currentHour = dayjs().hour();
+  const isFixedMode = bookingType === "fixed";
+
+  useEffect(() => {
+    getFixedDurationsApi()
+      .then(setFixedDurations)
+      .catch(() => notify("Không tải được danh sách gói cố định!", "error"));
+  }, []); // eslint-disable-line
 
   const loadAvailability = useCallback(async () => {
     if (!selectedCourt) return;
@@ -123,7 +152,7 @@ const CourtDetailView: React.FC = () => {
       });
       socket.off("slots:updated", handleSlotsUpdated);
     };
-  }, [selectedCourt, selectedDate]);
+  }, [selectedCourt, selectedDate]); // eslint-disable-line
 
   if (!selectedCourt) {
     goToCatalog();
@@ -163,23 +192,39 @@ const CourtDetailView: React.FC = () => {
   } = buildTimeRange(selectedSlots);
   const isContiguous = areConsecutive(selectedSlots);
 
-  // Preview tong tien theo tung khung gio + loai gia da chon
-  const previewTotal = useMemo(() => {
+  // Gia cho 1 buoi/1 tuan (chua nhan so buoi)
+  const weeklyPreviewTotal = useMemo(() => {
     if (!bookingType || selectedSlots.length === 0) return null;
     let sum = 0;
     for (const slot of selectedSlots) {
       const price = getPreviewPrice(slot, priceRules, bookingType);
-      if (price === null) return null; // co khung gio chua duoc cai gia
+      if (price === null) return null;
       sum += price;
     }
     return sum;
   }, [bookingType, selectedSlots, priceRules]);
 
+  // Preview gói cố định: nhân theo so buoi trong toan bo thoi han
+  const fixedPreview = useMemo(() => {
+    if (!isFixedMode || !selectedDuration || weeklyPreviewTotal === null)
+      return null;
+    const occurrences = buildFixedOccurrencesPreview(
+      selectedDate,
+      selectedDuration.months,
+    );
+    return { occurrences, totalPrice: weeklyPreviewTotal * occurrences.length };
+  }, [isFixedMode, selectedDuration, weeklyPreviewTotal, selectedDate]);
+
+  const finalPreviewTotal = isFixedMode
+    ? (fixedPreview?.totalPrice ?? null)
+    : weeklyPreviewTotal;
+
   const canContinue =
     selectedSlots.length > 0 &&
     isContiguous &&
     !!bookingType &&
-    previewTotal !== null;
+    weeklyPreviewTotal !== null &&
+    (!isFixedMode || !!selectedDuration);
 
   const handleContinue = () => {
     if (!canContinue) return;
@@ -230,7 +275,6 @@ const CourtDetailView: React.FC = () => {
           </div>
         </div>
 
-        {/* Bang gia loai san nay */}
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-header">
             Bảng giá — {selectedCourt.category?.name}
@@ -280,7 +324,9 @@ const CourtDetailView: React.FC = () => {
             gap: 20,
           }}>
           <div className="card">
-            <div className="card-header">Chọn ngày</div>
+            <div className="card-header">
+              {isFixedMode ? "Chọn ngày bắt đầu" : "Chọn ngày"}
+            </div>
             <div style={{ padding: "0 4px 8px" }}>
               <DateCalendar
                 value={dateObj}
@@ -288,7 +334,7 @@ const CourtDetailView: React.FC = () => {
                   v && setSelectedDate(v.format("YYYY-MM-DD"))
                 }
                 minDate={dayjs()}
-                maxDate={dayjs().add(30, "day")}
+                maxDate={dayjs().add(isFixedMode ? 60 : 30, "day")}
                 sx={{
                   width: "100%",
                   "& .MuiPickersDay-root.Mui-selected": {
@@ -313,21 +359,7 @@ const CourtDetailView: React.FC = () => {
             </div>
 
             {/* Chon loai gia */}
-            <div
-              style={{
-                margin: "0 16px 16px",
-                padding: selectedSlots.length > 0 && !bookingType ? 10 : 0,
-                borderRadius: 10,
-                border:
-                  selectedSlots.length > 0 && !bookingType
-                    ? "2px solid #ef4444"
-                    : "none",
-                background:
-                  selectedSlots.length > 0 && !bookingType
-                    ? "#fef2f2"
-                    : "transparent",
-                transition: "all 0.3s",
-              }}>
+            <div style={{ margin: "0 16px 16px" }}>
               {selectedSlots.length > 0 && !bookingType && (
                 <div
                   style={{
@@ -339,15 +371,6 @@ const CourtDetailView: React.FC = () => {
                   ⚠ Bạn cần chọn 1 trong 2 mục dưới đây để tiếp tục
                 </div>
               )}
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#4a5568",
-                  marginBottom: 8,
-                }}>
-                Chọn loại giá:
-              </div>
               <div
                 style={{
                   fontSize: 12,
@@ -374,7 +397,12 @@ const CourtDetailView: React.FC = () => {
                     background: bookingType === "fixed" ? "#fef3c7" : "white",
                   }}>
                   <StarIcon sx={{ color: "#b45309" }} fontSize="small" />
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>Cố định</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>Cố định</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                      Đăng ký gói dài hạn 1/3/6 tháng
+                    </div>
+                  </div>
                 </div>
                 <div
                   onClick={() => setBookingType("casual" as BookingType)}
@@ -392,12 +420,60 @@ const CourtDetailView: React.FC = () => {
                     background: bookingType === "casual" ? "#dbeafe" : "white",
                   }}>
                   <BoltIcon sx={{ color: "#1e40af" }} fontSize="small" />
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>
-                    Vãng lai
-                  </span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>
+                      Vãng lai
+                    </div>
+                    <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                      Đặt lẻ 1 buổi
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Chon thoi han goi - CHI hien khi chon Co dinh */}
+            {isFixedMode && (
+              <div style={{ margin: "0 16px 16px" }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#4a5568",
+                    marginBottom: 8,
+                  }}>
+                  Chọn thời hạn gói:
+                </div>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {fixedDurations.map((d) => (
+                    <div
+                      key={d.months}
+                      onClick={() => setSelectedDuration(d)}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        border:
+                          selectedDuration?.months === d.months
+                            ? "2px solid #1a472a"
+                            : "1px solid #e5e7eb",
+                        background:
+                          selectedDuration?.months === d.months
+                            ? "#e8f5e9"
+                            : "white",
+                      }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>
+                        {d.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="card">
@@ -440,6 +516,14 @@ const CourtDetailView: React.FC = () => {
                 ))}
               </div>
 
+              {isFixedMode && (
+                <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                  Với gói cố định, hệ thống chỉ kiểm tra khung giờ trống của{" "}
+                  <strong>ngày bắt đầu</strong> bên dưới — các tuần tiếp theo sẽ
+                  được BE xác nhận chính xác khi bạn hoàn tất đăng ký.
+                </Alert>
+              )}
+
               {!isContiguous && selectedSlots.length > 1 && (
                 <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
                   Vui lòng chọn các khung giờ <strong>liên tiếp nhau</strong>!
@@ -447,7 +531,7 @@ const CourtDetailView: React.FC = () => {
               )}
               {selectedSlots.length > 0 &&
                 bookingType &&
-                previewTotal === null && (
+                weeklyPreviewTotal === null && (
                   <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
                     Một số khung giờ đã chọn chưa được thiết lập giá. Vui lòng
                     chọn khung giờ khác.
@@ -477,6 +561,25 @@ const CourtDetailView: React.FC = () => {
                   );
                 })}
               </div>
+
+              {isFixedMode && fixedPreview && (
+                <Alert severity="success" sx={{ mt: 2, borderRadius: 2 }}>
+                  Lịch dự kiến:{" "}
+                  <strong>{fixedPreview.occurrences.length} buổi</strong>, từ{" "}
+                  <strong>
+                    {dayjs(fixedPreview.occurrences[0]).format("DD/MM/YYYY")}
+                  </strong>{" "}
+                  đến{" "}
+                  <strong>
+                    {dayjs(
+                      fixedPreview.occurrences[
+                        fixedPreview.occurrences.length - 1
+                      ],
+                    ).format("DD/MM/YYYY")}
+                  </strong>{" "}
+                  (mỗi {dateObj.format("dddd")})
+                </Alert>
+              )}
             </div>
           </div>
         </div>
@@ -490,7 +593,7 @@ const CourtDetailView: React.FC = () => {
             gap: 16,
             flexWrap: "wrap",
           }}>
-          {canContinue && (
+          {canContinue && finalPreviewTotal !== null && (
             <div
               style={{
                 background: "white",
@@ -503,16 +606,20 @@ const CourtDetailView: React.FC = () => {
                 boxShadow: "0 2px 8px rgba(26,71,42,0.08)",
               }}>
               <div>
-                <div style={{ fontSize: 11, color: "#718096" }}>Thời gian</div>
+                <div style={{ fontSize: 11, color: "#718096" }}>
+                  {isFixedMode ? "Số buổi" : "Thời gian"}
+                </div>
                 <div style={{ fontWeight: 700, color: "#1a472a" }}>
-                  {startTime} – {endTime} ({hours}h)
+                  {isFixedMode
+                    ? `${fixedPreview?.occurrences.length} buổi`
+                    : `${startTime} – ${endTime} (${hours}h)`}
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "#718096" }}>Tổng tiền</div>
                 <div
                   style={{ fontWeight: 800, fontSize: 18, color: "#1a472a" }}>
-                  {formatCurrency(previewTotal!)}
+                  {formatCurrency(finalPreviewTotal)}
                 </div>
               </div>
             </div>

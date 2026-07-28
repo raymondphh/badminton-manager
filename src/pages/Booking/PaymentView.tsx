@@ -22,13 +22,14 @@ const PaymentView: React.FC<Props> = ({ onDone }) => {
     selectedDate,
     selectedSlots,
     bookingType,
+    selectedDuration,
     notes,
     createdBooking,
     setCreatedBooking,
     goToCatalog,
     reset,
   } = useBookingFlowStore();
-  const { createBooking } = useBookingStore();
+  const { createBooking, createFixedBooking } = useBookingStore();
 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -47,13 +48,24 @@ const PaymentView: React.FC<Props> = ({ onDone }) => {
     const create = async () => {
       setCreating(true);
       setError("");
-      const result = await createBooking({
-        courtId: selectedCourt._id,
-        date: selectedDate,
-        slots: selectedSlots,
-        bookingType: bookingType!, // da bat buoc chon o CourtDetailView, khong the null khi toi day
-        notes,
-      });
+
+      const result =
+        bookingType === "fixed"
+          ? selectedDuration
+            ? await createFixedBooking({
+                courtId: selectedCourt._id,
+                startDate: selectedDate,
+                slots: selectedSlots,
+                durationMonths: selectedDuration.months,
+                notes,
+              })
+            : { success: false, message: "Thiếu thông tin thời hạn gói!" }
+          : await createBooking({
+              courtId: selectedCourt._id,
+              date: selectedDate,
+              slots: selectedSlots,
+              notes,
+            });
 
       setCreating(false);
       if (result.success && result.booking) {
@@ -161,7 +173,11 @@ const PaymentView: React.FC<Props> = ({ onDone }) => {
                 </span>
               </div>
               <div className="summary-row">
-                <span className="summary-label">Ngày</span>
+                <span className="summary-label">
+                  {createdBooking.bookingType === "fixed"
+                    ? "Ngày bắt đầu"
+                    : "Ngày"}
+                </span>
                 <span className="summary-value">
                   {dayjs(createdBooking.date).format("DD/MM/YYYY")}
                 </span>
@@ -173,6 +189,31 @@ const PaymentView: React.FC<Props> = ({ onDone }) => {
                   {createdBooking.hours}h)
                 </span>
               </div>
+
+              {createdBooking.bookingType === "fixed" && (
+                <>
+                  <div className="summary-row">
+                    <span className="summary-label">Thời hạn gói</span>
+                    <span className="summary-value">
+                      {createdBooking.durationMonths} tháng
+                    </span>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Tổng số buổi</span>
+                    <span className="summary-value">
+                      {createdBooking.occurrenceDates?.length} buổi
+                    </span>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Kết thúc dự kiến</span>
+                    <span className="summary-value">
+                      {createdBooking.endDate &&
+                        dayjs(createdBooking.endDate).format("DD/MM/YYYY")}
+                    </span>
+                  </div>
+                </>
+              )}
+
               <div className="summary-row">
                 <span className="summary-label">Đơn giá</span>
                 <span className="summary-value">
@@ -206,7 +247,8 @@ const PaymentView: React.FC<Props> = ({ onDone }) => {
 
             <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
               Sau khi chuyển khoản, bấm nút bên dưới. Nhân viên sẽ đối chiếu và
-              xác nhận đơn trong ít phút.
+              xác nhận đơn trong ít phút — bạn sẽ nhận được{" "}
+              <strong>email thông báo</strong> ngay khi đơn được xác nhận.
             </Alert>
 
             <Button

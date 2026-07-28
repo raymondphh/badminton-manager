@@ -1,11 +1,14 @@
 import { create } from "zustand";
-import { Booking, BookingStatus, CreateBookingPayload } from "@/types/Booking";
+import { Booking, BookingStatus } from "@/types/Booking";
 import {
   createBookingApi,
+  createFixedBookingApi,
   listMyBookingsApi,
   cancelMyBookingApi,
   listAllBookingsApi,
   updateBookingStatusApi,
+  CreateBookingPayload,
+  CreateFixedBookingPayload,
 } from "@/apis/booking.api";
 
 interface BookingStore {
@@ -14,7 +17,17 @@ interface BookingStore {
   isLoading: boolean;
 
   fetchMyBookings: () => Promise<void>;
-  createBooking: (payload: CreateBookingPayload) => Promise<{
+  createBooking: (
+    payload: CreateBookingPayload,
+  ) => Promise<{
+    success: boolean;
+    message: string;
+    conflict?: boolean;
+    booking?: Booking;
+  }>;
+  createFixedBooking: (
+    payload: CreateFixedBookingPayload,
+  ) => Promise<{
     success: boolean;
     message: string;
     conflict?: boolean;
@@ -67,6 +80,26 @@ export const useBookingStore = create<BookingStore>((set, get) => ({
       return {
         success: false,
         message: err?.response?.data?.message || "Đặt sân thất bại!",
+        conflict: errorCode === "SLOT_ALREADY_BOOKED",
+      };
+    }
+  },
+
+  createFixedBooking: async (payload) => {
+    try {
+      const booking = await createFixedBookingApi(payload);
+      set({ myBookings: [booking, ...get().myBookings] });
+      return {
+        success: true,
+        message:
+          "Đăng ký gói cố định thành công! Nhân viên sẽ xác nhận trong 30 phút.",
+        booking,
+      };
+    } catch (err: any) {
+      const errorCode = err?.response?.data?.errorCode;
+      return {
+        success: false,
+        message: err?.response?.data?.message || "Đăng ký thất bại!",
         conflict: errorCode === "SLOT_ALREADY_BOOKED",
       };
     }

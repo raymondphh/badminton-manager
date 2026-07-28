@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Court } from "@/types/Courts";
-import { Booking, BookingType } from "@/types/Booking";
+import { Booking, BookingType, FixedDurationOption } from "@/types/Booking";
 
 export type BookingFlowView = "intro" | "catalog" | "detail" | "payment";
 
@@ -10,6 +10,7 @@ interface BookingFlowStore {
   selectedDate: string;
   selectedSlots: string[];
   bookingType: BookingType | null;
+  selectedDuration: FixedDurationOption | null; // chi dung khi bookingType === "fixed"
   notes: string;
   createdBooking: Booking | null;
 
@@ -19,6 +20,7 @@ interface BookingFlowStore {
   setSelectedDate: (date: string) => void;
   setSelectedSlots: (slots: string[]) => void;
   setBookingType: (t: BookingType | null) => void;
+  setSelectedDuration: (d: FixedDurationOption | null) => void;
   setNotes: (notes: string) => void;
   goToPayment: () => void;
   setCreatedBooking: (b: Booking) => void;
@@ -33,11 +35,11 @@ export const useBookingFlowStore = create<BookingFlowStore>((set) => ({
   selectedDate: todayStr(),
   selectedSlots: [],
   bookingType: null,
+  selectedDuration: null,
   notes: "",
   createdBooking: null,
 
   goToIntro: () => set({ view: "intro", createdBooking: null }),
-  // FIX: xoa createdBooking moi lan quay lai danh sach, tranh QR cu bi ket dinh lai
   goToCatalog: () => set({ view: "catalog", createdBooking: null }),
   selectCourt: (court) =>
     set({
@@ -46,15 +48,16 @@ export const useBookingFlowStore = create<BookingFlowStore>((set) => ({
       selectedDate: todayStr(),
       selectedSlots: [],
       bookingType: null,
-      createdBooking: null, // FIX: xoa don cu khi bat dau chon san moi
+      selectedDuration: null,
+      createdBooking: null,
     }),
   setSelectedDate: (date) => set({ selectedDate: date, selectedSlots: [] }),
   setSelectedSlots: (slots) => set({ selectedSlots: slots }),
-  setBookingType: (t) => set({ bookingType: t }),
+  // Doi loai gia -> reset luon thoi han da chon (tranh giu lai thoi han cu khi chuyen tu Co dinh sang Vang lai roi quay lai)
+  setBookingType: (t) => set({ bookingType: t, selectedDuration: null }),
+  setSelectedDuration: (d) => set({ selectedDuration: d }),
   setNotes: (notes) => set({ notes }),
   goToPayment: () => set({ view: "payment" }),
-  // FIX: KHONG con "view: 'done'" nua - BookingFlowPage khong co nhanh xu ly view nay,
-  // truoc day khien man QR bi tu dong chuyen ve CourtsCatalogView ngay khi vua tao xong don.
   setCreatedBooking: (b) => set({ createdBooking: b }),
   reset: () =>
     set({
@@ -63,6 +66,7 @@ export const useBookingFlowStore = create<BookingFlowStore>((set) => ({
       selectedDate: todayStr(),
       selectedSlots: [],
       bookingType: null,
+      selectedDuration: null,
       notes: "",
       createdBooking: null,
     }),
